@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Hub - Live Crowdsourced Mapping Platform</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #0b1528; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        
+        /* Auth Screen Shield Over Map Backdrop */
+        #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0b1528; z-index: 9999; display: flex; justify-content: center; align-items: center; }
+        .auth-card { background: #121620; padding: 30px; border-radius: 20px; width: 90%; max-width: 360px; border: 1px solid #222b3e; text-align: center; }
+        .auth-card h2 { margin-top: 0; color: #00e5ff; }
+        .auth-card input { width: 100%; padding: 12px; margin: 10px 0; box-sizing: border-box; background: #1c2333; border: 1px solid #222b3e; color: white; border-radius: 10px; outline: none; }
+        .auth-card button { width: 100%; padding: 12px; background: #00e5ff; border: none; color: #090c15; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 10px; }
+        .auth-toggle { font-size: 0.85rem; color: #8e9aa8; margin-top: 15px; cursor: pointer; display: inline-block; }
+
+        /* Reporting Input Form Drawer Control Box */
+        .report-panel { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 999; background: #121620; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #222b3e; width: 90%; max-width: 400px; display: none; flex-direction: column; gap: 10px; }
+        .report-panel h3 { margin: 0 0 5px 0; color: #ff4d4d; }
+        .report-panel select, .report-panel input[type="file"] { width: 100%; padding: 10px; background: #1c2333; border: 1px solid #222b3e; color: white; border-radius: 8px; }
+        .report-panel button { padding: 12px; background: #ff4d4d; color: white; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        #loadingIndicator { display: none; color: #00e5ff; font-size: 0.9rem; text-align: center; margin-top: 5px; }
+        
+        /* Floating HUD Action Buttons */
+        .hud-btn { position: fixed; top: 20px; right: 20px; z-index: 998; background: #121620; border: 1px solid #222b3e; padding: 12px 20px; border-radius: 30px; color: white; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        #logoutBtn { right: unset; left: 20px; background: #222b3e; }
+
+        /* Global Modal View Overlays */
+        .story-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); z-index: 9991; justify-content: center; align-items: center; }
+        .story-card { background: #121620; width: 90%; max-width: 400px; border-radius: 20px; overflow: hidden; border: 1px solid #222b3e; position: relative; }
+        .story-header { padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222b3e; }
+        .story-image { width: 100%; height: 230px; object-fit: cover; background: #090c15; }
+        .story-content { padding: 15px; }
+        .action-bar { display: flex; gap: 20px; padding-bottom: 10px; border-bottom: 1px solid #222b3e; }
+        .comments-section { max-height: 120px; overflow-y: auto; margin-top: 10px; }
+        .comment-bubble { background: #1c2333; padding: 8px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 0.85rem; }
+        .comment-input-row { display: flex; padding: 10px 15px; background: #090c15; gap: 10px; }
+        .comment-input-row input { flex: 1; background: #1c2333; border: 1px solid #222b3e; border-radius: 20px; padding: 8px 15px; color: white; outline: none; }
+        .comment-input-row button { background: #00e5ff; border: none; border-radius: 20px; padding: 8px 15px; color: #090c15; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="authOverlay">
+        <div class="auth-card">
+            <h2 id="authTitle">Sign In to Report Hub</h2>
+            <input type="email" id="authEmail" placeholder="Enter Email Address">
+            <input type="password" id="authPassword" placeholder="Enter Security Password">
+            <button id="authPrimaryBtn">Continue</button>
+            <span class="auth-toggle" id="authToggleLink">New here? Create a public community profile</span>
+        </div>
+    </div>
+
+    <!-- User Profile Dashboard -->
+    <div id="userProfile" style="display:none; position:fixed; top:20px; left:20px; z-index:998; background:#121620; padding:10px 20px; border-radius:10px; border:1px solid #222b3e;">
+        <div style="font-size:0.8rem; color:#8e9aa8;">Logged in as</div>
+        <div id="userEmailDisplay" style="font-weight:bold; color:#00e5ff; margin-bottom:10px;"></div>
+        <button id="logoutBtn" style="background:#ff4d4d; color:white; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;">Sign Out</button>
+    </div>
+
+    <button class="hud-btn" id="openReportPanelBtn" style="display:none;">🚨 File New Report</button>
+    <div id="map"></div>
+
+    <div class="report-panel" id="reportPanel">
+        <h3>Report Local Infrastructure Issue</h3>
+        
+        <select id="reportCategory">
+            <option value="Broken Road 🚧">Broken Road</option>
+            <option value="Open Sewage Line 💧">Open Sewage Line</option>
+            <option value="Garbage Pile up 🗑️">Garbage on Public Property</option>
+            <option value="Electricity Down ⚡">Electricity Outage</option>
+            <option value="CUSTOM_OTHER">Other / Describe Custom Issue... 📝</option>
+        </select>
+
+        <input type="text" id="customCategoryText" placeholder="Write custom problem name..." style="display:none; width:100%; padding:10px; background:#1c2333; border:1px solid #222b3e; color:white; border-radius:8px; box-sizing:border-box;">
+        
+        <textarea id="reportDescription" placeholder="Describe the issue in detail..." rows="3" style="width:100%; padding:10px; background:#1c2333; border:1px solid #222b3e; color:white; border-radius:8px; box-sizing:border-box; margin-top:5px; resize:none;"></textarea>
+
+        <label style="font-size:0.8rem; color:#8e9aa8; margin-top:5px;">Upload Structural Photo Proof</label>
+        <input type="file" id="reportFile" accept="image/*">
+        
+        <button id="submitReportBtn">Upload & Pin Live Coordinates</button>
+        <button id="cancelReportBtn" style="background:#222b3e; margin-top:5px;">Cancel</button>
+        <div id="loadingIndicator" style="display:none; color:#00e5ff; font-size:0.9rem; text-align:center;">Processing upload...</div>
+    </div>
+
+    <div class="story-backdrop" id="storyModal">
+        <div class="story-card">
+            <div class="story-header">
+                <span style="font-weight:bold;" id="modalCategory">Incident</span>
+                <button id="closeModalBtn" style="background:none; border:none; color:grey; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <img src="" class="story-image" id="modalImage">
+            <div class="story-content">
+                <p id="modalDescription" style="font-size:0.9rem; color:#ccc; margin-top:0; border-bottom:1px solid #222b3e; padding-bottom:10px;"></p>
+                <div class="action-bar">
+                    <div style="cursor:pointer; color:#00e5ff;" id="upvoteBtn">🔺 <span id="modalVotes">0</span> Same Here</div>
+                    <div style="cursor:pointer; color:#ff4d4d; display:none;" id="solveBtn">✅ Mark Solved</div>
+                </div>
+                <div class="comments-section" id="modalComments"></div>
+            </div>
+            <div class="comment-input-row" id="commentFormRow" style="display:none;">
+                <input type="text" id="newCommentText" placeholder="Comment on this crisis...">
+                <button id="submitCommentBtn">Post</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+</body>
+</html>
